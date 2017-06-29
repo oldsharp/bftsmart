@@ -411,14 +411,19 @@ public final class TOMLayer extends Thread implements RequestReceiver {
 
                 }
 
+                byte[] propose = createPropose(dec);
+
                 if (evilPropose == null ) {
-                    evilPropose = createPropose(dec);
+                    evilPropose = propose;
                     System.out.println("~~~~~~~~~~~~~~ Evil propose created! ~~~~~~~~~~~~~~~");
-                } else {
-                    System.out.println("~~~~~~~~~~~~~~ Evil propose reused! ~~~~~~~~~~~~~~~~");
                 }
 
-                execManager.getProposer().startConsensus(execId, evilPropose);
+                if (execId % 999 == 0) {
+                    execManager.getProposer().startConsensus(execId, evilPropose);
+                    System.out.println("~~~~~~~~~~~~~~ Evil propose reused! ~~~~~~~~~~~~~~~~");
+                } else {
+                    execManager.getProposer().startConsensus(execId, propose);
+                }
             }
         }
         java.util.logging.Logger.getLogger(TOMLayer.class.getName()).log(Level.INFO, "TOMLayer stopped.");
