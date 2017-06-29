@@ -63,6 +63,8 @@ public final class TOMLayer extends Thread implements RequestReceiver {
     private DeliveryThread dt; // Thread which delivers total ordered messages to the appication
     public StateManager stateManager = null; // object which deals with the state transfer protocol
 
+    private byte[] evilPropose = null;
+
     /**
      * Manage timers for pending requests
      */
@@ -408,8 +410,15 @@ public final class TOMLayer extends Thread implements RequestReceiver {
                     continue;
 
                 }
-                execManager.getProposer().startConsensus(execId,
-                        createPropose(dec));
+
+                if (evilPropose == null ) {
+                    evilPropose = createPropose(dec);
+                    System.out.println("~~~~~~~~~~~~~~ Evil propose created! ~~~~~~~~~~~~~~~");
+                } else {
+                    System.out.println("~~~~~~~~~~~~~~ Evil propose reused! ~~~~~~~~~~~~~~~~");
+                }
+
+                execManager.getProposer().startConsensus(execId, evilPropose);
             }
         }
         java.util.logging.Logger.getLogger(TOMLayer.class.getName()).log(Level.INFO, "TOMLayer stopped.");
