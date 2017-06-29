@@ -25,9 +25,8 @@ public class Logger {
 
     public static void println(String msg) {
         if (debug) {
-            String dataActual = new SimpleDateFormat("yy/MM/dd HH:mm:ss").format(new Date());
             System.out.println(
-                    "(" + dataActual
+                    "(" + System.currentTimeMillis()
                     + " - " + Thread.currentThread().getName()
                     + ") " + msg);
         }
