@@ -80,10 +80,8 @@ public final class DeliveryThread extends Thread {
         if (!containsGoodReconfig(dec)) {
 
             Logger.println("(DeliveryThread.delivery) Decision from consensus " + dec.getConsensusId() + " does not contain good reconfiguration");
-            //set this decision as the last one from this replica
+            // FIXME: Ray - This is not the right time to set this decision as the last one from this replica!
             tomLayer.setLastExec(dec.getConsensusId());
-            //define that end of this execution
-            tomLayer.setInExec(-1);
         } //else if (tomLayer.controller.getStaticConf().getProcessId() == 0) System.exit(0);
         try {
             decidedLock.lock();
@@ -139,7 +137,7 @@ public final class DeliveryThread extends Thread {
        
         int lastCID =  recoverer.setState(state);
 
-        //set this decision as the last one from this replica
+        // FIXME: Ray - set this decision as the last one from this replica
         System.out.println("Setting last CID to " + lastCID);
         tomLayer.setLastExec(lastCID);
 
@@ -228,10 +226,8 @@ public final class DeliveryThread extends Thread {
                         if (controller.hasUpdates()) {
                             processReconfigMessages(lastDecision.getConsensusId());
 
-                            // set the consensus associated to the last decision as the last executed
+                            // FIXME: Ray - This is not the right time to set the consensus associated to the last decision as the last executed.
                             tomLayer.setLastExec(lastDecision.getConsensusId());
-                            // define that end of this execution
-                            tomLayer.setInExec(-1);
                             // ******* EDUARDO END **************//
                         }
                     }

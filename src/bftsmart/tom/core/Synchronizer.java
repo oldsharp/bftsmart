@@ -550,7 +550,7 @@ public class Synchronizer {
 
             //int leader = regency % this.reconfManager.getCurrentViewN(); // new leader
             int leader = lcManager.getNewLeader();
-            int in = tom.getInExec(); // cid to execute
+            int lastProposed = tom.getLastProposed(); // last cid proposed
             int last = tom.getLastExec(); // last cid decided
 
             execManager.setNewLeader(leader);
@@ -607,10 +607,10 @@ public class Synchronizer {
                     }
 
                 }
+                    // FIXME: Ray - Possibly more than one cid in execution.
+                    if (lastProposed > -1) { // content of cid in execution
 
-                    if (in > -1) { // content of cid in execution
-
-                        cons = execManager.getConsensus(in);
+                        cons = execManager.getConsensus(lastProposed);
 
                         //cons.incEts(); // make the consensus advance to the next epoch
                         cons.setETS(regency); // make the consensus advance to the next epoch
@@ -634,7 +634,7 @@ public class Synchronizer {
                         HashSet<TimestampValuePair> writeSet = cons.getWriteSet();
 
                         //CollectData collect = new CollectData(this.controller.getStaticConf().getProcessId(), in, ets, quorumWrites, writeSet);
-                        CollectData collect = new CollectData(this.controller.getStaticConf().getProcessId(), in, regency, quorumWrites, writeSet);
+                        CollectData collect = new CollectData(this.controller.getStaticConf().getProcessId(), lastProposed, regency, quorumWrites, writeSet);
 
                         SignedObject signedCollect = tom.sign(collect);
 
@@ -757,8 +757,8 @@ public class Synchronizer {
                 }
                 lcManager.addLastCID(regency, lastDec);
 
-                if (in > -1) { // content of cid being executed
-                    cons = execManager.getConsensus(in);
+                if (lastProposed > -1) { // content of cid being executed
+                    cons = execManager.getConsensus(lastProposed);
 
                     //cons.incEts(); // make the consensus advance to the next epoch
                     cons.setETS(regency); // make the consensus advance to the next epoch
@@ -781,7 +781,7 @@ public class Synchronizer {
                     HashSet<TimestampValuePair> writeSet = cons.getWriteSet();
 
                     //collect = new CollectData(this.controller.getStaticConf().getProcessId(), in, ets, quorumWrites, writeSet);
-                    collect = new CollectData(this.controller.getStaticConf().getProcessId(), in, regency, quorumWrites, writeSet);
+                    collect = new CollectData(this.controller.getStaticConf().getProcessId(), lastProposed, regency, quorumWrites, writeSet);
 
                 } else {
 
@@ -1223,7 +1223,8 @@ public class Synchronizer {
             // resume normal operation
             execManager.restart();
             //leaderChanged = true;
-            tom.setInExec(currentCID);
+            // FIXME: Ray - when to do this?
+            tom.setLastProposed(currentCID);
             if (iAmLeader) {
                 Logger.println("(Synchronizer.finalise) wake up proposer thread");
                 tom.imAmTheLeader();

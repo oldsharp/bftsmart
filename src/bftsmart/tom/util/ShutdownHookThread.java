@@ -47,7 +47,7 @@ public class ShutdownHookThread extends Thread {
         StringBuffer buffer = new StringBuffer();
         SimpleDateFormat sdf = new SimpleDateFormat("HH:mm:ss.SSS");
         int lastCons = tomLayer.getLastExec();
-        int currentCons = tomLayer.getInExec();
+        int lastProp = tomLayer.getLastProposed();
         Consensus c = null;
         Epoch e = null;
 
@@ -74,13 +74,13 @@ public class ShutdownHookThread extends Thread {
                 buffer.append("\n\n\t -- Epoch state: \n"+e.toString());
             }
         }
-        buffer.append("\n\nConsensus in execution: " + (currentCons == -1 ? "None" : currentCons));
+        buffer.append("\n\nLast proposed consensus: " + (lastProp == -1 ? "None" : lastProp));
         
         c = null;
         e = null;
-        if(currentCons > -1) {
-            
-            c = tomLayer.execManager.getConsensus(currentCons);
+        if(lastProp > -1) {
+            // FIXME: Ray - Last proposed msgs are more than one.
+            c = tomLayer.execManager.getConsensus(lastProp);
             
             for (TimestampValuePair rv : c.getWriteSet()) {
                 if  (rv.getValue() != null && rv.getValue().length > 0)

@@ -26,6 +26,7 @@ public class TOMConfiguration extends Configuration {
     protected int n;
     protected int f;
     protected int requestTimeout;
+    protected int slidingWindow;
     protected int tomPeriod;
     protected int paxosHighMark;
     protected int revivalHighMark;
@@ -102,6 +103,16 @@ public class TOMConfiguration extends Configuration {
                 requestTimeout = Integer.parseInt(s);
                 if (requestTimeout < 0) {
                     requestTimeout = 0;
+                }
+            }
+
+            s = (String) configs.remove("system.totalordermulticast.slidingwindow");
+            if (s == null) {
+                slidingWindow = 1;
+            } else {
+                slidingWindow = Integer.parseInt(s);
+                if (slidingWindow < 0) {
+                    slidingWindow = 0;
                 }
             }
 
@@ -362,6 +373,10 @@ public class TOMConfiguration extends Configuration {
 
     public int getRequestTimeout() {
         return requestTimeout;
+    }
+
+    public int getSlidingWindow() {
+        return slidingWindow;
     }
 
     public int getReplyVerificationTime() {

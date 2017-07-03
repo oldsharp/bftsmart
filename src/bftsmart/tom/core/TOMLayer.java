@@ -74,8 +74,10 @@ public final class TOMLayer extends Thread implements RequestReceiver {
     /**
      * The id of the consensus being executed (or -1 if there is none)
      */
-    private int inExecution = -1;
+    private int lastProposed = -1;
     private int lastExecuted = -1;
+
+    private int slidingWindow = 0;
 
     public MessageDigest md;
     private Signature engine;
@@ -125,6 +127,8 @@ public final class TOMLayer extends Thread implements RequestReceiver {
         this.acceptor = a;
         this.communication = cs;
         this.controller = controller;
+
+        slidingWindow = this.controller.getStaticConf().getSlidingWindow();
 
         //do not create a timer manager if the timeout is 0
         if (this.controller.getStaticConf().getRequestTimeout() == 0) {
@@ -225,7 +229,14 @@ public final class TOMLayer extends Thread implements RequestReceiver {
      * @param last ID of the consensus which was last to be executed
      */
     public void setLastExec(int last) {
+        proposeLock.lock();
+        Logger.println("(TOMLayer.setLastExec) Modifying lastExecuted from " + this.lastExecuted + " to " + last + ".");
         this.lastExecuted = last;
+        if ((getLastProposed() < this.lastExecuted + slidingWindow) && !isRetrievingState()) {
+            canPropose.signalAll();
+        }
+        proposeLock.unlock();
+        execManager.updateProposeReceived(this.lastExecuted);
     }
 
     /**
@@ -238,15 +249,17 @@ public final class TOMLayer extends Thread implements RequestReceiver {
     }
 
     /**
-     * Sets which consensus is being executed at the moment
+     * Sets which consensus was the last to be proposed.
      *
-     * @param inEx ID of the consensus being executed at the moment
+     * @param lastProposed ID of the consensus which was last to be
+     *                     proposed.
      */
-    public void setInExec(int inEx) {
+    public void setLastProposed(int lastProposed) {
         proposeLock.lock();
-        Logger.println("(TOMLayer.setInExec) modifying inExec from " + this.inExecution + " to " + inEx);
-        this.inExecution = inEx;
-        if (inEx == -1 && !isRetrievingState()) {
+        Logger.println("(TOMLayer.setLastProposed) Modifying lastProposed from " + this.lastProposed +
+                " to " + lastProposed + ".");
+        this.lastProposed = lastProposed;
+        if ((this.lastProposed < getLastExec() + slidingWindow) && !isRetrievingState()) {
             canPropose.signalAll();
         }
         proposeLock.unlock();
@@ -262,13 +275,24 @@ public final class TOMLayer extends Thread implements RequestReceiver {
     }
 
     /**
-     * Gets the ID of the consensus currently beign executed
+     * Gets the ID of the consensus which was established as the last
+     * propose.
      *
-     * @return ID of the consensus currently beign executed (if no consensus ir
-     * executing, -1 is returned)
+     * @return ID of the consensus which was established as the last
+     *         proposed.  If no consensus value was ever proposed, -1
+     *         is returned.
      */
-    public int getInExec() {
-        return this.inExecution;
+    public int getLastProposed() {
+        return this.lastProposed;
+    }
+
+    /**
+     * Gets current sliding window value.
+     *
+     * @return Current value of the sliding window.
+     */
+    public int getSlidingWindow() {
+        return slidingWindow;
     }
 
     /**
@@ -339,10 +363,11 @@ public final class TOMLayer extends Thread implements RequestReceiver {
 
             // blocks until this replica learns to be the leader for the current epoch of the current consensus
             leaderLock.lock();
-            Logger.println("Next leader for CID=" + (getLastExec() + 1) + ": " + execManager.getCurrentLeader());
+            Logger.println("Next leader for CID=" + (getLastProposed() + 1) + ": " + execManager.getCurrentLeader());
 
             //******* EDUARDO BEGIN **************//
             if (execManager.getCurrentLeader() != this.controller.getStaticConf().getProcessId()) {
+                Logger.println("I'm not the leader so I wait.");
                 iAmLeader.awaitUninterruptibly();
                 //waitForPaxosToFinish();
             }
@@ -351,11 +376,13 @@ public final class TOMLayer extends Thread implements RequestReceiver {
             
             if (!doWork) break;
 
-            // blocks until the current consensus finishes
+            // Blocks until the sliding window is suitble for proposing.
             proposeLock.lock();
-
-            if (getInExec() != -1) { //there is some consensus running
-                Logger.println("(TOMLayer.run) Waiting for consensus " + getInExec() + " termination.");
+            // This works even when lastProposed or lastExecuted is -1.
+            if (getLastProposed() >= getLastExec() + slidingWindow) {
+                Logger.println("(TOMLayer.run) Waiting for the sliding window is suitble for proposing.  " +
+                        "lastProposed: " + getLastProposed() + ", " +
+                        "lastExecuted: " + getLastExec() + ".");
                 canPropose.awaitUninterruptibly();
             }
             proposeLock.unlock();
@@ -367,6 +394,7 @@ public final class TOMLayer extends Thread implements RequestReceiver {
             // blocks until there are requests to be processed/ordered
             messagesLock.lock();
             if (!clientsManager.havePendingRequests()) {
+                Logger.println("No message to be ordered so I wait.");
                 haveMessages.awaitUninterruptibly();
             }
             messagesLock.unlock();
@@ -379,11 +407,11 @@ public final class TOMLayer extends Thread implements RequestReceiver {
 
             if ((execManager.getCurrentLeader() == this.controller.getStaticConf().getProcessId()) && //I'm the leader
                     (clientsManager.havePendingRequests()) && //there are messages to be ordered
-                    (getInExec() == -1)) { //there is no consensus in execution
+                    (getLastProposed() < getLastExec() + slidingWindow)) { // The sliding window is suitble for proposing
 
-                // Sets the current consensus
-                int execId = getLastExec() + 1;
-                setInExec(execId);
+                // Sets the ID of the next consensus to be proposed.
+                int execId = getLastProposed() + 1;
+                setLastProposed(execId);
 
                 Decision dec = execManager.getConsensus(execId).getDecision();
 
@@ -502,17 +530,18 @@ public final class TOMLayer extends Thread implements RequestReceiver {
     }
 
     public void setNoExec() {
-        Logger.println("(TOMLayer.setNoExec) modifying inExec from " + this.inExecution + " to " + -1);
+        // FIXME: Ray - So we need to reset the state...
+        Logger.println("(TOMLayer.setNoExec) modifying inExec from " + this.lastProposed + " to " + -1);
 
         proposeLock.lock();
-        this.inExecution = -1;
+        this.lastProposed = -1;
         //ot.addUpdate();
         canPropose.signalAll();
         proposeLock.unlock();
     }
 
     public void processOutOfContext() {
-        for (int nextConsensus = getLastExec() + 1;
+        for (int nextConsensus = getLastExec() + 1; // FIXME: Ray
                 execManager.receivedOutOfContextPropose(nextConsensus);
                 nextConsensus = getLastExec() + 1) {
             execManager.processOutOfContextPropose(execManager.getConsensus(nextConsensus));

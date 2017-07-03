@@ -19,11 +19,13 @@ import bftsmart.consensus.Consensus;
 import bftsmart.consensus.Epoch;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -60,6 +62,14 @@ public final class ExecutionManager {
     // Proposes that were out of context (that belonged to future consensuses, and not the one running at the time)
     private Map<Integer, ConsensusMessage> outOfContextProposes = new HashMap<Integer, ConsensusMessage>();
     private ReentrantLock outOfContextLock = new ReentrantLock(); //lock for out of context
+
+    // Record the consensus ID of the propose message received if it is
+    // inside the sliding window.  The replica will know the consensus
+    // instance is actually under executing and the messages related to
+    // the instance can be processed.
+    private Set<Integer> proposeReceived = new HashSet<Integer>();
+    private ReentrantLock proposeLock = new ReentrantLock();
+
     private boolean stopped = false; // Is the execution manager stopped?
     // When the execution manager is stopped, incoming paxos messages are stored here
     private Queue<ConsensusMessage> stoppedMsgs = new LinkedList<ConsensusMessage>();
@@ -178,11 +188,6 @@ public final class ExecutionManager {
         Logger.println("(ExecutionManager.stoping) Stoping execution manager");
         stoppedMsgsLock.lock();
         this.stopped = true;
-        if (tomLayer.getInExec() != -1) {
-            stoppedEpoch = getConsensus(tomLayer.getInExec()).getLastEpoch();
-            //stoppedEpoch.getTimeoutTask().cancel();
-            if (stoppedEpoch != null) Logger.println("(ExecutionManager.stop) Stoping epoch " + stoppedEpoch.getTimestamp() + " of consensus " + tomLayer.getInExec());
-        }
         stoppedMsgsLock.unlock();
     }
 
@@ -217,11 +222,11 @@ public final class ExecutionManager {
         
         int lastConsId = tomLayer.getLastExec();
         
-        int inExec = tomLayer.getInExec();
+        int lastProposed = tomLayer.getLastProposed();
         
         Logger.println("(ExecutionManager.checkLimits) Received message  " + msg);
-        Logger.println("(ExecutionManager.checkLimits) I'm at consensus " + 
-                inExec + " and my last consensus is " + lastConsId);
+        Logger.println("(ExecutionManager.checkLimits) The last proposed consensus I'm aware of is " +
+                lastProposed + " and my last consensus is " + lastConsId);
         
         boolean isRetrievingState = tomLayer.isRetrievingState();
 
@@ -249,10 +254,9 @@ public final class ExecutionManager {
                 }
                 stoppedMsgsLock.unlock();
             } else {
-                if (isRetrievingState || 
-                        msg.getNumber() > (lastConsId + 1) || 
-                        (inExec != -1 && inExec < msg.getNumber()) || 
-                        (inExec == -1 && msg.getType() != MessageFactory.PROPOSE)) { //not propose message for the next consensus
+                if (isRetrievingState ||
+                        msg.getNumber() > lastConsId + tomLayer.getSlidingWindow() ||
+                        (msg.getType() != MessageFactory.PROPOSE && !proposeReceived.contains(msg.getNumber()))) {
                     Logger.println("(ExecutionManager.checkLimits) Message for consensus " + 
                             msg.getNumber() + " is out of context, adding it to out of context set");
                     
@@ -494,6 +498,36 @@ public final class ExecutionManager {
 
         /******* END OUTOFCONTEXT CRITICAL SECTION *******/
         outOfContextLock.unlock();
+    }
+
+    /**
+     * Record the consensus ID of the propose message received if it is
+     * inside the sliding window.
+     *
+     * @param consensusID The consensus ID of the propose message
+     *                    received.
+     */
+    public void addProposeReceived(int consensusID) {
+        proposeLock.lock();
+        proposeReceived.add(consensusID);
+        proposeLock.unlock();
+    }
+
+    /**
+     * Maintain the set that record the consensus ID of proposes
+     * received and make sure it always inside current sliding window.
+     *
+     * @param consensnsID Consensus ID of the last decided consensus.
+     */
+    public void updateProposeReceived(int consensnsID) {
+        proposeLock.lock();
+        Set<Integer> copy = new HashSet<Integer>(proposeReceived);
+        for (int cid : copy) {
+            if (cid <= consensnsID) {
+                proposeReceived.remove(cid);
+            }
+        }
+        proposeLock.unlock();
     }
 
     @Override

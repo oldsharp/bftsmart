@@ -182,9 +182,13 @@ public final class Acceptor {
             Logger.println("(Acceptor.executePropose) I have written value " + Arrays.toString(epoch.propValueHash) + " in consensus instance " + cid + " with timestamp " + epoch.getConsensus().getEts());
             /*****************************************/
 
-            //start this consensus if it is not already running
-            if (cid == tomLayer.getLastExec() + 1) {
-                tomLayer.setInExec(cid);
+            // Record the PROPOSE message received.
+            if (cid <= tomLayer.getLastExec() + tomLayer.getSlidingWindow()) {
+                executionManager.addProposeReceived(cid);
+            }
+            // Update the last proposed consensus ID.
+            if (cid > tomLayer.getLastProposed()) {
+                tomLayer.setLastProposed(cid);
             }
             epoch.deserializedPropValue = tomLayer.checkProposedValue(value, true);
 
